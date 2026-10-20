@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=3" />
+  <title>Offline Document Viewer</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      min-height: 100%;
+      background: #e5e7eb;
+      color: #111827;
+      font-family: Arial, sans-serif;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+      padding: 8px;
+    }
+
+
+    /* Word document pages */
+    #document .docx-wrapper {
+      width: 100% !important;
+      max-width: 100% !important;
+      padding: 8px 0 !important;
+      margin: 0 !important;
+      background: #e5e7eb !important;
+      overflow: visible !important;
+    }
+
+
+    /* Word document pages */
+    #document .docx-wrapper {
+      width: 100% !important;
+      max-width: 100% !important;
+      padding: 8px 0 !important;
+      margin: 0 !important;
+      background: #e5e7eb !important;
+      overflow: visible !important;
+    }
+
+    #document .docx {
+      margin: 0 auto 16px auto !important;
+      box-sizing: border-box !important;
+      background: #ffffff !important;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    }
+
+    /* Keep document content within the page */
+    #document .docx img {
+      max-width: 100% !important;
+      height: auto !important;
+    }
+
+    #document .docx table {
+      max-width: 100% !important;
+      table-layout: fixed;
+      border-collapse: collapse;
+    }
+
+    #document .docx td,
+    #document .docx th {
+      box-sizing: border-box;
+      overflow-wrap: anywhere;
+    }
+
+    #document .docx p {
+      overflow-wrap: break-word;
+    }
+
+    /* Hide horizontal overflow at the viewer boundary */
+    html,
+    body {
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+
+    #document {
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+
+
+    /* Excel worksheet headings */
+    #document h3 {
+      margin: 18px 0 8px;
+      padding: 10px;
+      background: #e0e7ff;
+      color: #1e3a8a;
+      font-size: 16px;
+      font-weight: 700;
+      border-radius: 4px;
+    }
+
+    /* Excel worksheets */
+    #document table {
+      border-collapse: collapse;
+      width: max-content;
+      min-width: 100%;
+      margin: 0 0 20px;
+      background: #ffffff;
+      table-layout: auto;
+      font-size: 13px;
+    }
+
+    #document td,
+    #document th {
+      border: 1px solid #d1d5db;
+      padding: 7px 10px;
+      text-align: left;
+      vertical-align: top;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      min-width: 70px;
+      max-width: 280px;
+    }
+
+    #document th {
+      background: #f3f4f6;
+      font-weight: 700;
+    }
+
+    #document img {
+      max-width: 100%;
+      height: auto;
+    }
+
+    .message {
+      padding: 16px;
+      text-align: center;
+      color: #4b5563;
+    }
+
+    /* Remove max-width truncation and overflow-x: hidden on the document wrapper */
+#document {
+  width: 100%;
+  overflow-x: auto; /* Allow scrolling if document is wider than screen */
+  -webkit-overflow-scrolling: touch;
+}
+
+#document .docx-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px !important;
+  background: #e5e7eb !important;
+}
+
+#document .docx {
+  box-sizing: border-box !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  margin-bottom: 16px !important;
+  /* Remove width: 100% !important so table grid calculations aren't squished */
+}
+    /* Keep the viewer aligned with the phone viewport */
+    html,
+    body {
+      width: 100%;
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+
+    #document {
+      width: 100%;
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+
+/* Word document: fit page to mobile viewport */
+#document .docx-wrapper {
+  width: 100% !important;
+  max-width: 100% !important;
+  padding: 8px 0 !important;
+  margin: 0 !important;
+}
+
+#document .docx {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 auto 16px !important;
+  box-sizing: border-box !important;
+}
+
+/* Keep Word images within the page */
+#document .docx img {
+  max-width: 100% !important;
+  height: auto !important;
+}
+
+/* Excel: scroll wide worksheets horizontally */
+.xlsx-table-container {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 20px;
+}
+
+.xlsx-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+  background: #ffffff;
+  font-size: 13px;
+}
+
+.xlsx-table td,
+.xlsx-table th {
+  border: 1px solid #d1d5db;
+  padding: 7px 10px;
+  text-align: left;
+  vertical-align: top;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-width: 70px;
+  max-width: 280px;
+}
+
+  </style>
+</head>
+
+<body>
+  <div id="document">
+    <p class="message">Waiting for document…</p>
+  </div>
+
+  <script src="./viewer.bundle.js"></script>
+</body>
+
+</html>

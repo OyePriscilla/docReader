@@ -1,0 +1,823 @@
+
+import * as DocumentPicker from 'expo-document-picker';
+import { Ionicons } from '@expo/vector-icons';
+import Pdf from 'react-native-pdf';
+import { getFileIcon } from '@/utils/fileIcons';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+import {
+  ActivityIndicator,
+  FlatList,
+  NativeEventEmitter,
+  NativeModules,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import {
+  useFocusEffect,
+  useLocalSearchParams,
+  useRouter,
+} from 'expo-router';
+
+import {
+  addRecentPdf,
+  getRecentPdfs,
+  type RecentPdf,
+} from '../../utils/recent-Pdfs';
+
+import { saveFileLocally } from '../../utils/PdfStorage';
+import * as FileSystem from 'expo-file-system/legacy';
+import { WebView } from 'react-native-webview';
+type Screen = 'menu' | 'reader';
+
+type SupportedFileType =
+  | 'pdf'
+  | 'docx'
+  | 'xlsx'
+  | 'jpg'
+  | 'jpeg'
+  | 'png'
+  | 'webp';
+
+type IncomingFile = {
+  uri: string;
+  name: string;
+  mimeType?: string | null;
+};
+
+const incomingFileModule = NativeModules.IncomingFile;
+
+const incomingFileEmitter = incomingFileModule
+  ? new NativeEventEmitter(incomingFileModule)
+  : null;
+
+function getFileType(name: string): SupportedFileType | null {
+  const extension = name.split('.').pop()?.toLowerCase();
+
+  switch (extension) {
+    case 'pdf':
+    case 'docx':
+    case 'xlsx':
+    case 'jpg':
+    case 'jpeg':
+    case 'png':
+    case 'webp':
+      return extension;
+    default:
+      return null;
+  }
+}
+
+export default function HomeScreen() {
+  const params = useLocalSearchParams<{
+    uri?: string;
+    name?: string;
+  }>();
+
+  const router = useRouter();
+
+  const [screen, setScreen] = useState<Screen>('menu');
+  const [pdfUri, setPdfUri] = useState<string | null>(null);
+  const [fileType, setFileType] =
+    useState<SupportedFileType | null>(null);
+  const documentWebViewRef = useRef<WebView>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [recentPdfs, setRecentPdfs] = useState<RecentPdf[]>([]);
+  const [loadingRecent, setLoadingRecent] = useState(false);
+
+
+  const loadRecentPdfs = useCallback(async () => {
+    setLoadingRecent(true);
+
+    try {
+      const files = await getRecentPdfs();
+      setRecentPdfs(files);
+    } catch (error) {
+      console.error('Could not load recent PDFs:', error);
+    } finally {
+      setLoadingRecent(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadRecentPdfs();
+    }, [loadRecentPdfs])
+  );
+
+  useEffect(() => {
+    if (typeof params.uri !== 'string' || !params.uri) {
+      return;
+    }
+
+    const name =
+      typeof params.name === 'string'
+        ? params.name
+        : 'PDF document';
+
+    const selectedType = getFileType(name);
+
+    if (!selectedType) {
+      setError('This file type is not supported.');
+      return;
+    }
+
+    setPdfUri(params.uri);
+    setFileName(name);
+    setFileType(selectedType);
+    setCurrentPage(1);
+    setTotalPages(0);
+    setError(null);
+
+    setLoading(
+      selectedType === 'pdf' ||
+      selectedType === 'docx' ||
+      selectedType === 'xlsx'
+    );
+
+    setScreen('reader');
+
+    addRecentPdf({
+      id: params.uri,
+      name,
+      uri: params.uri,
+    }).catch((err) => {
+      console.error('Could not save recent PDF:', err);
+    });
+  }, [params.uri, params.name]);
+
+  const processedIncomingFiles = useRef(new Set<string>());
+
+  const handleIncomingFile = useCallback(
+    async (incoming: IncomingFile) => {
+      if (!incoming?.uri || !incoming?.name) {
+        return;
+      }
+
+      // Prevent the initial-file lookup and event listener
+      // from importing the same file twice.
+      const key = `${incoming.uri}|${incoming.name}`;
+
+      if (processedIncomingFiles.current.has(key)) {
+        return;
+      }
+
+      processedIncomingFiles.current.add(key);
+
+      const selectedType = getFileType(incoming.name);
+
+      if (!selectedType) {
+        setError(
+          `Unsupported file: ${incoming.name}. ` +
+          'Supported formats are PDF, DOCX, XLSX, JPG, JPEG, PNG and WEBP.'
+        );
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+
+        const savedUri = await saveFileLocally(
+          incoming.uri,
+          incoming.name
+        );
+
+        setFileName(incoming.name);
+        setPdfUri(savedUri);
+        setFileType(selectedType);
+        setCurrentPage(1);
+        setTotalPages(0);
+        setScreen('reader');
+
+        await addRecentPdf({
+          id: savedUri,
+          name: incoming.name,
+          uri: savedUri,
+        });
+
+        await loadRecentPdfs();
+
+        const isImage = [
+          'jpg',
+          'jpeg',
+          'png',
+          'webp',
+        ].includes(selectedType);
+
+        if (isImage) {
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('Incoming file import failed:', err);
+        setError('Unable to import this file. Please try again.');
+        setLoading(false);
+      }
+    },
+    [loadRecentPdfs]
+  );
+
+  useEffect(() => {
+    if (!incomingFileModule || !incomingFileEmitter) {
+      return;
+    }
+
+    let active = true;
+
+    const subscription = incomingFileEmitter.addListener(
+      'incomingFile',
+      (file: IncomingFile) => {
+        if (active) {
+          void handleIncomingFile(file);
+        }
+      }
+    );
+
+    incomingFileModule
+      .getInitialFile()
+      .then((file: IncomingFile | null) => {
+        if (active && file) {
+          return handleIncomingFile(file);
+        }
+      })
+      .catch((err: unknown) => {
+        console.error('Could not retrieve incoming file:', err);
+      });
+
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, [handleIncomingFile]);
+
+  const pickPDF = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (result.canceled || !result.assets.length) {
+        return;
+      }
+
+      const selectedFile = result.assets[0];
+      const selectedType = getFileType(selectedFile.name);
+
+      if (!selectedType) {
+        setError(
+          'Unsupported file. Select PDF, DOCX, XLSX, JPG, JPEG, PNG or WEBP.'
+        );
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+      setCurrentPage(1);
+      setTotalPages(0);
+
+      const savedUri = await saveFileLocally(
+        selectedFile.uri,
+        selectedFile.name
+      );
+
+      setFileName(selectedFile.name);
+      setPdfUri(savedUri);
+      setFileType(selectedType);
+      setScreen('reader');
+
+      await addRecentPdf({
+        id: savedUri,
+        name: selectedFile.name,
+        uri: savedUri,
+      });
+
+      if (selectedType === 'jpg' ||
+        selectedType === 'jpeg' ||
+        selectedType === 'png' ||
+        selectedType === 'webp') {
+        setLoading(false);
+      }
+    } catch (err) {
+      setLoading(false);
+      setError('Unable to open or save this file. Please try again.');
+      console.error('File selection error:', err);
+    }
+  };
+
+
+
+  const loadOfficeDocument = async () => {
+    if (!pdfUri || !fileType) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+
+      const base64 = await FileSystem.readAsStringAsync(pdfUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      const webView = documentWebViewRef.current;
+
+      if (!webView) {
+        throw new Error('The document viewer is not ready.');
+      }
+
+      webView.injectJavaScript(
+        'window.__officeBase64 = ""; true;'
+      );
+
+      const chunkSize = 30000;
+
+      for (let i = 0; i < base64.length; i += chunkSize) {
+        const chunk = base64.slice(i, i + chunkSize);
+
+        webView.injectJavaScript(
+          `window.__officeBase64 += ${JSON.stringify(chunk)}; true;`
+        );
+
+        // Give WebView time to process each chunk.
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
+      }
+
+      webView.injectJavaScript(
+        `window.renderDocument(` +
+        `window.__officeBase64, ` +
+        `${JSON.stringify(fileType)}` +
+        `); window.__officeBaser64 = ""; true;`
+      );
+    } catch (err) {
+      console.error('Office document rendering error:', err);
+      setError('Unable to display this document. Please try again.');
+      setLoading(false);
+    }
+  };
+
+
+  if (screen === 'menu') {
+    return (
+      <View style={styles.menuContainer}>
+        <Text style={styles.menuTitle}>Getting Started</Text>
+        <Text style={styles.menuSubtitle}>
+          Choose how you want to continue.
+        </Text>
+
+
+        <View style={styles.recentSection}>
+          <View style={styles.recentHeader}>
+            <Text style={styles.recentTitle}>Recent PDFs</Text>
+
+            <TouchableOpacity onPress={() => router.push('/explore')}>
+              <Text style={styles.seeAll}>See all</Text>
+            </TouchableOpacity>
+          </View>
+
+          {loadingRecent ? (
+            <ActivityIndicator color="#4f46e5" />
+          ) : recentPdfs.length === 0 ? (
+            <Text style={styles.recentTitle}>Recent documents</Text>
+          ) : (
+
+            <FlatList
+              data={recentPdfs.slice(0, 4)}
+              keyExtractor={(item) => item.id}
+              scrollEnabled={false}
+
+              renderItem={({ item }) => {
+                const fileIcon = getFileIcon(item.name);
+
+                return (
+                  <TouchableOpacity
+                    style={styles.recentItem}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/',
+                        params: {
+                          uri: item.uri,
+                          name: item.name,
+                        },
+                      })
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${item.name}`}
+                    activeOpacity={0.7}
+                  >
+                    <View
+                      style={[
+                        styles.recentFileIcon,
+                        { backgroundColor: fileIcon.backgroundColor },
+                      ]}
+                    >
+                      <Ionicons
+                        name={fileIcon.name}
+                        size={26}
+                        color={fileIcon.color}
+                      />
+                    </View>
+
+                    <View style={styles.recentItemText}>
+                      <Text style={styles.recentFileName} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+
+                      <Text style={styles.recentDate}>
+                        {new Date(item.openedAt).toLocaleString([], {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        })}
+                      </Text>
+                    </View>
+
+                    <Ionicons
+                      name="chevron-forward"
+                      size={20}
+                      color="#6b7280"
+                    />
+                  </TouchableOpacity>
+                );
+              }}
+
+            />
+
+          )}
+        </View>
+
+        {/* Add icon appears below the recent PDFs */}
+        <TouchableOpacity
+          style={styles.addIconButton}
+          onPress={pickPDF}
+          accessibilityRole="button"
+          accessibilityLabel="Add PDF"
+        >
+          <Ionicons name="add" size={36} color="#ffffff" />
+        </TouchableOpacity>
+
+
+        {error && <Text style={styles.error}>{error}</Text>}
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.readerContainer}>
+      <View style={styles.readerHeader}>
+        <TouchableOpacity
+          onPress={() => setScreen('menu')}
+          accessibilityRole="button"
+          accessibilityLabel="Back to menu"
+        >
+          <Ionicons
+            name="arrow-back"
+            size={26}
+            color="#111827"
+          />
+        </TouchableOpacity>
+
+        <Text style={styles.readerTitle} numberOfLines={1}>
+          {fileName ?? 'PDF Reader'}
+        </Text>
+
+        <TouchableOpacity
+          onPress={pickPDF}
+          accessibilityRole="button"
+          accessibilityLabel="Add another PDF"
+        >
+          <Ionicons
+            name="add-circle-outline"
+            size={28}
+            color="#4f46e5"
+          />
+        </TouchableOpacity>
+      </View>
+
+      {error && <Text style={styles.error}>{error}</Text>}
+
+
+      {pdfUri && fileType ? (
+        fileType === 'pdf' ? (
+          <View style={styles.pdfContainer}>
+            <Pdf
+              key={pdfUri}
+              source={{ uri: pdfUri }}
+              style={styles.pdf}
+              trustAllCerts={false}
+              onLoadComplete={(pages) => {
+                setLoading(false);
+                setTotalPages(pages);
+              }}
+              onError={(err) => {
+                setLoading(false);
+                setError(`Could not display PDF: ${String(err)}`);
+                console.error('PDF rendering error:', err);
+              }}
+              onPageChanged={(page, pages) => {
+                setCurrentPage(page);
+                setTotalPages(pages);
+              }}
+            />
+
+            <Text style={styles.pageCounter}>
+              Page {currentPage} of {totalPages}
+            </Text>
+
+            {loading && (
+              <View style={styles.loading}>
+                <ActivityIndicator size="large" color="#4f46e5" />
+                <Text>Loading PDF...</Text>
+              </View>
+            )}
+          </View>
+        ) : ['jpg', 'jpeg', 'png', 'webp'].includes(fileType) ? (
+          <View style={styles.imageViewer}>
+            <ScrollView
+              contentContainerStyle={styles.imageScrollContent}
+              maximumZoomScale={4}
+            >
+              <Image
+                key={pdfUri}
+                source={{ uri: pdfUri }}
+                style={styles.documentImage}
+                resizeMode="contain"
+                onLoad={() => setLoading(false)}
+                onError={() => {
+                  setLoading(false);
+                  setError('Unable to display this image.');
+                }}
+              />
+            </ScrollView>
+
+            {loading && (
+              <ActivityIndicator size="large" color="#4f46e5" />
+            )}
+          </View>
+        ) : (
+          <View style={styles.officeViewer}>
+            <WebView
+              key={pdfUri}
+              ref={documentWebViewRef}
+              source={{
+                uri: 'file:///android_asset/document-viewer/index.html',
+              }}
+              originWhitelist={['*']}
+              javaScriptEnabled
+              allowFileAccess
+              onMessage={(event) => {
+                try {
+                  const message = JSON.parse(event.nativeEvent.data);
+
+                  if (message.type === 'render-complete') {
+                    setLoading(false);
+
+                    if (message.success) {
+                      setError('');
+                    } else {
+                      setError(
+                        message.error || 'Unable to display this document.'
+                      );
+                    }
+                  }
+                } catch (err) {
+                  console.error('Document viewer message error:', err);
+                  setLoading(false);
+                  setError('Unable to process the document viewer response.');
+                }
+              }}
+              onLoadEnd={loadOfficeDocument}
+              onError={() => {
+                setLoading(false);
+                setError('Unable to load the offline document viewer.');
+              }}
+            />
+
+            {loading && (
+              <View style={styles.loading}>
+                <ActivityIndicator size="large" color="#4f46e5" />
+                <Text>Loading document...</Text>
+              </View>
+            )}
+          </View>
+        )
+      ) : (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyTitle}>No file open</Text>
+
+          <TouchableOpacity
+            style={styles.openButton}
+            onPress={() => setScreen('menu')}
+          >
+            <Text style={styles.openButtonText}>
+              Back to Getting Started
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+ 
+  menuContainer: {
+    flex: 1,
+    padding: 24,
+    paddingTop: 70,
+    backgroundColor: '#f9fafb',
+  },
+  menuTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  menuSubtitle: {
+    fontSize: 15,
+    color: '#6b7280',
+    marginTop: 8,
+    marginBottom: 28,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 18,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    gap: 14,
+  },
+ 
+  addIconButton: {
+    alignSelf: 'center',
+    marginTop: 42,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#4f46e5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  
+  readerContainer: {
+    flex: 1,
+    padding: 12,
+    paddingTop: 48,
+    backgroundColor: '#ffffff',
+  },
+  readerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 12,
+  },
+  readerTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  pdfContainer: {
+    flex: 1,
+    overflow: 'hidden',
+    borderRadius: 8,
+    backgroundColor: '#e5e7eb',
+  },
+  pdf: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: '#e5e7eb',
+  },
+  loading: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: '#ffffffcc',
+  },
+  pageCounter: {
+    textAlign: 'center',
+    paddingVertical: 8,
+    fontSize: 14,
+    color: '#333333',
+    backgroundColor: '#f0f0f0',
+  },
+  emptyBox: {
+    marginTop: 35,
+    padding: 25,
+    borderRadius: 16,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  openButton: {
+    marginTop: 18,
+    padding: 12,
+    backgroundColor: '#4f46e5',
+    borderRadius: 10,
+  },
+  openButtonText: {
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  error: {
+    marginTop: 12,
+    marginBottom: 12,
+    color: '#b91c1c',
+  },
+  recentSection: {
+    marginTop: 28,
+  },
+  recentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  recentTitle: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  seeAll: {
+    color: '#4f46e5',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  noRecent: {
+    color: '#6b7280',
+    fontSize: 14,
+    paddingVertical: 16,
+  },
+  recentItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    marginBottom: 8,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  recentItemText: {
+    flex: 1,
+  },
+  recentFileName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  recentDate: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#6b7280',
+  },
+
+  officeViewer: {
+    flex: 1,
+    overflow: 'hidden',
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
+  },
+
+  imageViewer: {
+    flex: 1,
+    backgroundColor: '#f3f4f6',
+    justifyContent: 'center',
+  },
+
+  imageScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  documentImage: {
+    width: '100%',
+    height: 600,
+  },
+
+  recentFileIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+});
