@@ -1,0 +1,155 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=3, user-scalable=yes"
+  />
+  <title>Offline Document Viewer</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      min-height: 100%;
+      font-family: Arial, sans-serif;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    html {
+      background: #e5e7eb;
+    }
+
+    body {
+      padding: 8px;
+      background: #e5e7eb;
+      color: #111827;
+      overflow-x: auto;
+    }
+
+    #document {
+      width: 100%;
+      min-width: 0;
+      margin: 0 auto;
+    }
+
+    .message {
+      padding: 16px;
+      text-align: center;
+      color: #4b5563;
+    }
+
+    /* Word document container */
+    #document .docx-wrapper {
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      margin: 0 !important;
+      padding: 8px 0 !important;
+      background: #e5e7eb !important;
+      overflow: visible !important;
+    }
+
+    /* Word page: fit the phone viewport */
+    #document .docx {
+  width: auto !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 auto 16px auto !important;
+  box-sizing: border-box !important;
+  background: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  overflow-wrap: break-word;
+}
+
+    #document .docx section,
+    #document .docx article {
+      max-width: 100% !important;
+      min-width: 0 !important;
+    }
+
+    #document .docx img {
+      max-width: 100% !important;
+      height: auto !important;
+    }
+
+    #document .docx table {
+      max-width: 100% !important;
+      table-layout: fixed;
+      border-collapse: collapse;
+    }
+
+    #document .docx td,
+    #document .docx th {
+      box-sizing: border-box;
+      overflow-wrap: anywhere;
+      word-break: normal;
+    }
+
+    #document .docx p {
+      max-width: 100%;
+      overflow-wrap: anywhere;
+    }
+
+    /* Excel worksheet headings */
+    #document h3 {
+      margin: 18px 0 8px;
+      padding: 10px;
+      background: #e0e7ff;
+      color: #1e3a8a;
+      font-size: 16px;
+      font-weight: 700;
+      border-radius: 4px;
+    }
+
+    /* Excel worksheet tables */
+    #document table {
+      border-collapse: collapse;
+      width: max-content;
+      min-width: 100%;
+      margin: 0 0 20px;
+      background: #ffffff;
+      table-layout: auto;
+      font-size: 13px;
+    }
+
+    #document td,
+    #document th {
+      border: 1px solid #d1d5db;
+      padding: 7px 10px;
+      text-align: left;
+      vertical-align: top;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      min-width: 70px;
+      max-width: 280px;
+    }
+
+    #document th {
+      background: #f3f4f6;
+      font-weight: 700;
+    }
+
+    #document img {
+      max-width: 100%;
+      height: auto;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="document">
+    <p class="message">Waiting for document…</p>
+  </div>
+
+  <script src="./viewer.bundle.js"></script>
+</body>
+</html>

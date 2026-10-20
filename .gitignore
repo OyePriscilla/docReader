@@ -40,4 +40,8 @@ example
 
 # generated native folders
 /ios
-/android
+
+# Android signing keys
+*.jks
+*.keystore
+android/app/debug.keystore
